@@ -28,6 +28,8 @@ fw-shipped-$(CONFIG_TOUCHSCREEN_NT36xxx_HOSTDL_SPI) += novatek_nt36675_j3s_fw01.
 
 fw-shipped-$(CONFIG_TOUCHSCREEN_FOCALTECH) += focaltech_ts_fw.bin
 
+fw-shipped-$(CONFIG_MACH_XIAOMI_PSYCHE) += st_fts_l3a.ftb
+
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 
 quiet_cmd_ihex  = IHEX    $@
