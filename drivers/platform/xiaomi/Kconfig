@@ -57,4 +57,10 @@ menu "Xiaomi board selection"
 		help
 		  Support for Mi 10
 
+	config MACH_XIAOMI_PSYCHE
+		bool "Xiaomi psyche board"
+		select MACH_XIAOMI_SM8250
+		help
+		  Support for Mi 12X
+
 endmenu
