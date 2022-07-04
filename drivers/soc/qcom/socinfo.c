@@ -61,6 +61,7 @@ enum {
 	HW_PLATFORM_J2  = 43,
 	HW_PLATFORM_K11A = 44,
 	HW_PLATFORM_J2S = 45,
+	HW_PLATFORM_L3A = 48,
 #endif
 	HW_PLATFORM_HDK = 31,
 	HW_PLATFORM_IDP = 34,
@@ -92,6 +93,7 @@ const char *hw_platform[] = {
 	[HW_PLATFORM_J3S] = "APOLLO",
 	[HW_PLATFORM_K11A] = "ALIOTH",
 	[HW_PLATFORM_J2S] = "THYME",
+	[HW_PLATFORM_L3A] = "PSYCHE",
 #endif
 	[HW_PLATFORM_HDK] = "HDK",
 	[HW_PLATFORM_IDP] = "IDP"
@@ -1686,8 +1688,10 @@ uint32_t get_hw_version_platform(void)
 		return HARDWARE_PLATFORM_APOLLO;
 	if (hw_type == HW_PLATFORM_K11A)
 		return HARDWARE_PLATFORM_ALIOTH;
-        if (hw_type == HW_PLATFORM_J2S)
-                return HARDWARE_PLATFORM_THYME;
+	if (hw_type == HW_PLATFORM_J2S)
+		return HARDWARE_PLATFORM_THYME;
+	if (hw_type == HW_PLATFORM_L3A)
+		return HARDWARE_PLATFORM_PSYCHE;
 	else
 		return HARDWARE_PLATFORM_UNKNOWN;
 }
