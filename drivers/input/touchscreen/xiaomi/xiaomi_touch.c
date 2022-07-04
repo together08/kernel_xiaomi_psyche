@@ -183,6 +183,9 @@ int xiaomitouch_register_modedata(struct xiaomi_touch_interface *data)
 	touch_data->panel_display_read = data->panel_display_read;
 	touch_data->touch_vendor_read = data->touch_vendor_read;
 	touch_data->setModeLongValue = data->setModeLongValue;
+#ifdef CONFIG_TOUCHSCREEN_ST_FTS_V521_SPI
+	touch_data->get_touch_super_resolution_factor = data->get_touch_super_resolution_factor;
+#endif
 #if XIAOMI_ROI
 	touch_data->partial_diff_data_read = data->partial_diff_data_read;
 #endif
@@ -513,6 +516,22 @@ static ssize_t xiaomi_touch_log_debug_store(struct device *dev,
 	return count;
 }
 
+#ifdef CONFIG_TOUCHSCREEN_ST_FTS_V521_SPI
+static ssize_t resolution_factor_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int factor = 1;
+
+	if (!touch_pdata) {
+		return -ENODEV;
+	}
+	if (touch_pdata->touch_data->get_touch_super_resolution_factor) {
+		factor = touch_pdata->touch_data->get_touch_super_resolution_factor();
+	}
+	return snprintf(buf, PAGE_SIZE, "%d", factor);
+}
+#endif
+
 static DEVICE_ATTR(palm_sensor, (S_IRUGO | S_IWUSR | S_IWGRP),
 		   palm_sensor_show, palm_sensor_store);
 
@@ -544,6 +563,9 @@ static DEVICE_ATTR(partial_diff_data, (S_IRUGO | S_IWUSR | S_IWGRP),
 	xiaomi_partial_diff_data_show, xiaomi_partial_diff_data_store);
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_ST_FTS_V521_SPI
+static DEVICE_ATTR(resolution_factor, 0644, resolution_factor_show, NULL);
+#endif
 
 static struct attribute *touch_attr_group[] = {
 	&dev_attr_palm_sensor.attr,
@@ -557,6 +579,9 @@ static struct attribute *touch_attr_group[] = {
 	&dev_attr_log_debug.attr,
 #if XIAOMI_ROI
 	&dev_attr_partial_diff_data.attr,
+#endif
+#ifdef CONFIG_TOUCHSCREEN_ST_FTS_V521_SPI
+	&dev_attr_resolution_factor.attr,
 #endif
 	NULL,
 };

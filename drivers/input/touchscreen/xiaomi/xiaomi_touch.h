@@ -142,6 +142,9 @@ struct xiaomi_touch_interface {
 	u8 (*panel_color_read)(void);
 	u8 (*panel_display_read)(void);
 	char (*touch_vendor_read)(void);
+#ifdef CONFIG_TOUCHSCREEN_ST_FTS_V521_SPI
+	int (*get_touch_super_resolution_factor)(void);
+#endif
 #if XIAOMI_ROI
 	int (*partial_diff_data_read)(struct xiaomi_diff_data *data);
 #endif
