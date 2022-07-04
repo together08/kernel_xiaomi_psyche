@@ -10,3 +10,4 @@ obj-$(CONFIG_FINGERPRINT_GOODIX)		+= goodix/
 obj-$(CONFIG_FINGERPRINT_GOODIX_FOD)		+= goodix_fod/
 obj-$(CONFIG_FINGERPRINT_GOODIX_FOD_LMI)		+= goodix_fod_lmi/
 obj-$(CONFIG_FINGERPRINT_GOODIX_FOD_THY)		+= goodix_fod_thy/
+obj-$(CONFIG_FINGERPRINT_GOODIX_FOD_PSY)        += goodix_fod_psy/
