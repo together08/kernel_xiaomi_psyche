@@ -6301,7 +6301,8 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 	{/* hw:x,30 */
 #if defined(CONFIG_MACH_XIAOMI_APOLLO) \
 	|| defined(CONFIG_MACH_XIAOMI_CAS) \
-	|| defined(CONFIG_MACH_XIAOMI_ALIOTH)
+	|| defined(CONFIG_MACH_XIAOMI_ALIOTH) \
+	|| defined(CONFIG_MACH_XIAOMI_PSYCHE)
 		.name = "Tertiary TDM1 Hostless Playback",
 		.stream_name = "Tertiary TDM1 Hostless Playback",
 		.cpu_dai_name = "msm-dai-q6-tdm.36898",
@@ -7185,7 +7186,7 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {
 
 #ifdef CONFIG_MACH_XIAOMI_SM8250
 static struct snd_soc_dai_link tert_mi2s_rx_cs35l41_dai_links[] = {
-#if defined(CONFIG_MACH_XIAOMI_APOLLO) || defined(CONFIG_MACH_XIAOMI_CAS) || defined(CONFIG_MACH_XIAOMI_ALIOTH)
+#if defined(CONFIG_MACH_XIAOMI_APOLLO) || defined(CONFIG_MACH_XIAOMI_CAS) || defined(CONFIG_MACH_XIAOMI_ALIOTH) || defined(CONFIG_MACH_XIAOMI_PSYCHE)
 	{
 		.name = LPASS_BE_TERT_TDM_RX_0,
 		.stream_name = "Tertiary TDM0 Playback",
@@ -7968,6 +7969,7 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 				    get_hw_version_platform() == HARDWARE_PLATFORM_APOLLO ||
 				    get_hw_version_platform() == HARDWARE_PLATFORM_ALIOTH ||
 				    get_hw_version_platform() == HARDWARE_PLATFORM_THYME ||
+				    get_hw_version_platform() == HARDWARE_PLATFORM_PSYCHE ||
 					get_hw_version_platform() == HARDWARE_PLATFORM_CAS) {
 					memcpy(msm_kona_dai_links + total_links,
 						tert_mi2s_rx_cs35l41_dai_links,

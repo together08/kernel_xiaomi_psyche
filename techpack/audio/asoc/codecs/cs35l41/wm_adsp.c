@@ -2262,7 +2262,8 @@ static int wm_adsp_load(struct wm_adsp *dsp)
 	|| defined(CONFIG_MACH_XIAOMI_CAS) \
 	|| defined(CONFIG_MACH_XIAOMI_CMI) \
 	|| defined(CONFIG_MACH_XIAOMI_THYME) \
-	|| defined(CONFIG_MACH_XIAOMI_UMI)
+	|| defined(CONFIG_MACH_XIAOMI_UMI) \
+	|| defined(CONFIG_MACH_XIAOMI_PSYCHE)
 			if(dsp->chip_revid == 0xB2) {
 				snprintf(file, PAGE_SIZE, "%s-%s%d-%s-revb2.wmfw",
 					 dsp->part, wm_adsp_arch_text_lower(dsp->type),
@@ -3199,7 +3200,8 @@ static int wm_adsp_load_coeff(struct wm_adsp *dsp)
 	|| defined(CONFIG_MACH_XIAOMI_CAS) \
 	|| defined(CONFIG_MACH_XIAOMI_CMI) \
 	|| defined(CONFIG_MACH_XIAOMI_THYME) \
-	|| defined(CONFIG_MACH_XIAOMI_UMI)
+	|| defined(CONFIG_MACH_XIAOMI_UMI) \
+	|| defined(CONFIG_MACH_XIAOMI_PSYCHE)
 		if(dsp->chip_revid == 0xB2) {
 			//for B2 chip
 			if (dsp->component->name_prefix)
@@ -4425,21 +4427,33 @@ static int wm_halo_apply_calibration(struct snd_soc_dapm_widget *w)
 				wm_adsp_k_ctl_put(dsp, "RCV DSP1X Protection cd CAL_STATUS", dsp->cal_status);
 				wm_adsp_k_ctl_put(dsp, "RCV DSP1X Protection cd CAL_CHECKSUM", dsp->cal_chksum);
 				//hold time = 0x96
+#ifndef CONFIG_MACH_XIAOMI_PSYCHE
 				wm_adsp_k_ctl_put(dsp, "RCV DSP1X Protection 400a4 OFFSET_HOLD_TIME", 150);
+#endif
 				wm_adsp_k_ctl_get(dsp, "RCV DSP1X Protection cd CAL_R");
 				wm_adsp_k_ctl_get(dsp, "RCV DSP1X Protection cd CAL_STATUS");
 				wm_adsp_k_ctl_get(dsp, "RCV DSP1X Protection cd CAL_CHECKSUM");
 				//for ultrasonic
-#if defined(CONFIG_MACH_XIAOMI_APOLLO) || defined(CONFIG_MACH_XIAOMI_CAS) || defined (CONFIG_MACH_XIAOMI_ALIOTH)
+#if defined(CONFIG_MACH_XIAOMI_APOLLO) || defined(CONFIG_MACH_XIAOMI_CAS) || defined (CONFIG_MACH_XIAOMI_ALIOTH) || defined (CONFIG_MACH_XIAOMI_PSYCHE)
 				wm_adsp_k_ctl_put(dsp, "RCV DSP1X Protection 400a4 E_FULL_US_BYPASS", 1);
 				wm_adsp_k_ctl_get(dsp, "RCV DSP1X Protection 400a4 E_FULL_US_BYPASS");
+#endif
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+			//for lrclk delay
+			wm_adsp_k_ctl_put(dsp, "RCV DSP1X Protection 400a4 MAX_LRCLK_DELAY", 0x20);
 #endif
 			} else {
 				wm_adsp_k_ctl_put(dsp, "DSP1X Protection cd CAL_R", dsp->cal_z);
 				wm_adsp_k_ctl_put(dsp, "DSP1X Protection cd CAL_STATUS", dsp->cal_status);
 				wm_adsp_k_ctl_put(dsp, "DSP1X Protection cd CAL_CHECKSUM", dsp->cal_chksum);
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+				//for lrclk delay
+				wm_adsp_k_ctl_put(dsp, "DSP1X Protection 400a4 MAX_LRCLK_DELAY", 0x20);
+#else
 				//hold time = 0x96
 				wm_adsp_k_ctl_put(dsp, "DSP1X Protection 400a4 OFFSET_HOLD_TIME", 150);
+#endif
 				wm_adsp_k_ctl_get(dsp, "DSP1X Protection cd CAL_R");
 				wm_adsp_k_ctl_get(dsp, "DSP1X Protection cd CAL_STATUS");
 				wm_adsp_k_ctl_get(dsp, "DSP1X Protection cd CAL_CHECKSUM");

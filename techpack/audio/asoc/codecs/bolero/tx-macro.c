@@ -47,11 +47,15 @@
 #define TX_MACRO_AMIC_UNMUTE_DELAY_MS	100
 #ifdef CONFIG_MACH_XIAOMI_SM8250
 #define TX_MACRO_DMIC_HPF_DELAY_MS	100
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define TX_MACRO_AMIC_HPF_DELAY_MS	300
+#else /* CONFIG_MACH_XIAOMI_PSYCHE */
 #define TX_MACRO_AMIC_HPF_DELAY_MS	100
-#else
+#endif /* CONFIG_MACH_XIAOMI_PSYCHE */
+#else /* CONFIG_MACH_XIAOMI_SM8250 */
 #define TX_MACRO_DMIC_HPF_DELAY_MS	300
 #define TX_MACRO_AMIC_HPF_DELAY_MS	300
-#endif
+#endif /* CONFIG_MACH_XIAOMI_SM8250 */
 
 #ifdef CONFIG_MACH_XIAOMI_SM8250
 struct tx_macro_priv *g_tx_priv;
@@ -957,6 +961,15 @@ void bolero_tx_macro_mute_hs(void)
 		return;
 
 	component = g_tx_priv->component;
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	if (delayed_work_pending(&g_tx_priv->tx_hs_unmute_dwork)) {
+		dev_err(component->dev, "%s: there is already a work, give up unmute\n",
+				__func__);
+		return;
+	}
+#endif
+
 	g_tx_priv->reg_before_mute = snd_soc_component_read32(component, BOLERO_CDC_TX0_TX_VOL_CTL);
 	dev_info(component->dev, "%s: the reg value before mute is: %#x \n",
 			__func__, g_tx_priv->reg_before_mute);
@@ -1075,10 +1088,14 @@ static int tx_macro_enable_dec(struct snd_soc_dapm_widget *w,
 			queue_delayed_work(system_freezable_wq,
 				&tx_priv->tx_hpf_work[decimator].dwork,
 #ifdef CONFIG_MACH_XIAOMI_SM8250
-				msecs_to_jiffies(100));
-#else
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
 				msecs_to_jiffies(hpf_delay));
-#endif
+#else /* CONFIG_MACH_XIAOMI_PSYCHE */
+				msecs_to_jiffies(100));
+#endif /* CONFIG_MACH_XIAOMI_PSYCHE */
+#else /* CONFIG_MACH_XIAOMI_SM8250 */
+				msecs_to_jiffies(hpf_delay));
+#endif /* CONFIG_MACH_XIAOMI_SM8250 */
 			snd_soc_component_update_bits(component,
 					hpf_gate_reg, 0x03, 0x02);
 			if (!is_amic_enabled(component, decimator))
