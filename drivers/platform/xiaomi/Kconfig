@@ -63,4 +63,10 @@ menu "Xiaomi board selection"
 		help
 		  Support for Mi 12X
 
+	config MACH_XIAOMI_PSYCHE_MIUI_VENDOR
+		bool "Xiaomi psyche miui vendor version"
+		depends on MACH_XIAOMI_PSYCHE
+		help
+		  Convert a specific build type
+
 endmenu
