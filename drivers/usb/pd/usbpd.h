@@ -76,6 +76,9 @@ struct usbpd_pdo {
 
 int usbpd_get_pps_status(struct usbpd *pd, u32 *status);
 int usbpd_fetch_pdo(struct usbpd *pd, struct usbpd_pdo *pdos);
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int usbpd_get_current_state(struct usbpd *pd);
+#endif
 #endif
 
 #if IS_ENABLED(CONFIG_QPNP_USB_PDPHY)

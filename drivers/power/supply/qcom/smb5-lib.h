@@ -115,11 +115,15 @@ enum print_reason {
 /* use for QC3P5 */
 #define QC3P5_VOTER			"QC3P5_VOTER"
 #define FCC_MAX_QC3P5_VOTER		"FCC_MAX_QC3P5_VOTER"
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define NON_PPS_PD_FCC_VOTER		"NON_PPS_PD_FCC_VOTER"
+#endif
 
 /* thermal micros */
 #define MAX_TEMP_LEVEL		16
 /* defined for distinguish qc class_a and class_b */
 #define VOL_THR_FOR_QC_CLASS_AB		12400000
+#define VOL_THR_FOR_QC_CLASS_AB_PSYCHE	12300000
 #define COMP_FOR_LOW_RESISTANCE_CABLE	100000
 #define QC_CLASS_A_CURRENT_UA		3600000
 #define HVDCP_CLASS_A_MAX_UA		2500000
@@ -254,6 +258,9 @@ enum esr_work_status {
 #define ADAPTER_XIAOMI_PD_40W 0x0c
 #define ADAPTER_XIAOMI_PD_50W 0x0e
 #define ADAPTER_XIAOMI_PD_60W 0x0f
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define ADAPTER_XIAOMI_PD_100W 0x10
+#endif
 #define ADAPTER_VOICE_BOX 0x0d
 
 /* defined for charger type recheck */
@@ -620,6 +627,9 @@ struct smb_charger {
 	struct power_supply		*ln_psy;
 	struct power_supply		*cp_chip_psy;
 #endif
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	struct power_supply 	*cp_sec_psy;
+#endif
 	struct power_supply		*cp_psy;
 #ifdef CONFIG_BATT_VERIFY_BY_DS28E16
 	struct power_supply		*batt_verify_psy;
@@ -795,6 +805,9 @@ struct smb_charger {
 	int			dcp_icl_ua;
 	int			fake_capacity;
 	int			fake_batt_status;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	bool			chg_enable_k11a;
+#endif
 	bool			step_chg_enabled;
 	bool			sw_jeita_enabled;
 	bool			typec_legacy_use_rp_icl;
@@ -930,10 +943,19 @@ struct smb_charger {
 	int64_t			rpp;
 	int64_t			cep;
 	int64_t			tx_bt_mac;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int64_t			pen_bt_mac;
+#endif
 	int64_t oob_rpp_msg_cnt;
 	int64_t oob_cep_msg_cnt;
 	int			reverse_chg_state;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int			reverse_pen_chg_state;
+#endif
 	int			reverse_gpio_state;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int			wls_car_adapter;
+#endif
 
 	/* product related */
 	bool			support_wireless;
@@ -1025,6 +1047,9 @@ struct smb_charger {
 	bool			flag_second_ffc_term_current;
 
 	int			night_chg_flag;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	u8			apsd_stats;
+#endif
 #endif
 };
 
@@ -1282,6 +1307,10 @@ int smblib_get_prop_dc_temp_level(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_set_prop_tx_mac(struct smb_charger *chg,
 				const union power_supply_propval *val);
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+void smblib_set_prop_pen_mac(struct smb_charger *chg,
+				const union power_supply_propval *val);
+#endif
 int smblib_set_prop_rx_cr(struct smb_charger *chg,
 				const union power_supply_propval *val);
 int smblib_set_prop_rx_cep(struct smb_charger *chg,
@@ -1323,6 +1352,9 @@ int smblib_get_prop_type_recheck(struct smb_charger *chg,
 int smblib_night_charging_func(struct smb_charger *chg,
 				 union power_supply_propval *val);
 int smblib_get_quick_charge_type(struct smb_charger *chg);
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int smblib_get_adapter_power_max(struct smb_charger *chg);
+#endif
 #endif
 int smblib_get_qc3_main_icl_offset(struct smb_charger *chg, int *offset_ua);
 
@@ -1332,6 +1364,9 @@ int smblib_get_prop_battery_charging_enabled(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_set_fastcharge_mode(struct smb_charger *chg, bool enable);
 int smblib_get_fastcharge_mode(struct smb_charger *chg);
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int smblib_set_fastcharge_iterm(struct smb_charger *chg, int iterm);
+#endif
 struct usbpd *smb_get_usbpd(void);
 #endif
 int smblib_init(struct smb_charger *chg);

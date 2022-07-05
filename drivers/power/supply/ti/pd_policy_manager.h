@@ -69,6 +69,9 @@ enum pm_state {
 #define STEP_BMS_CHG_VOTER	"STEP_BMS_CHG_VOTER"
 #define BQ_TAPER_FCC_VOTER	"BQ_TAPER_FCC_VOTER"
 #define BQ_TAPER_CELL_HGIH_FCC_VOTER	"BQ_TAPER_CELL_HGIH_FCC_VOTER"
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define NON_PPS_PD_FCC_VOTER "NON_PPS_PD_FCC_VOTER"
+#endif
 
 /* defined for non_verified pps charger maxium fcc */
 #define NON_VERIFIED_PPS_FCC_MAX		4800
@@ -83,6 +86,9 @@ enum pm_state {
 
 #define STEP_MV			20
 #define TAPER_VOL_HYS			80
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define TAPER_VOL_HYS_30			30
+#endif
 #define TAPER_WITH_IBUS_HYS			60
 #define TAPER_IBUS_THR			450
 #define MAX_THERMAL_LEVEL			13
@@ -90,6 +96,9 @@ enum pm_state {
 
 #define FCC_MAX_MA_FOR_MASTER_BQ			6000
 #define IBUS_THRESHOLD_MA_FOR_DUAL_BQ			2100
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define IBUS_THRESHOLD_MA_FOR_DUAL_BQ_LN8000		2500
+#endif
 #define IBUS_THR_MA_HYS_FOR_DUAL_BQ			200
 #define IBUS_THR_TO_CLOSE_SLAVE_COUNT_MAX			40
 
@@ -119,20 +128,31 @@ enum pm_state {
 #define CRITICAL_HIGH_VOL_THR_MV			4480
 
 #define IBUS_TARGET_COMP_MA			100
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define IBUS_TARGET_COMP_30MA			30
+#endif
 #define HIGH_IBUS_LIMI_THR_MA			4000
 
 #define TAPER_DONE_FFC_MA			2400
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define TAPER_DONE_FFC_MA_LN8000		2500
+#endif
 #define TAPER_DONE_NORMAL_MA			2200
 
 #define VBAT_HIGH_FOR_FC_HYS_MV		100
 #define CAPACITY_TOO_HIGH_THR			95
+#ifndef CONFIG_MACH_XIAOMI_PSYCHE
 #define CAPACITY_HIGH_THR			80
-
+#endif
 #define	APDO_MAX_VOLT				11000
 
 #define CRITICAL_LOW_IBUS_THR			300
 
 #define MAX_UNSUPPORT_PPS_CURRENT_MA			5500
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+#define NON_PPS_PD_FCC_LIMIT			(3000 * 1000)
+#endif
 
 enum {
 	POWER_SUPPLY_PPS_INACTIVE = 0,
@@ -141,6 +161,9 @@ enum {
 };
 struct sw_device {
 	bool charge_enabled;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	bool night_charging;
+#endif
 };
 
 struct usbpd_pdo {
@@ -192,8 +215,14 @@ struct cp_device {
 	int  vbus_volt;
 	int  ibat_curr;
 	int  ibus_curr;
-
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int  bq_input_suspend;
+	int  bms_chip_ok;
+#endif
 	int  bat_temp;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int  bms_batt_temp;
+#endif
 	int  bus_temp;
 	int  die_temp;
 };
@@ -211,6 +240,9 @@ struct usbpd_pm {
 
 	int	pd_active;
 	bool	pps_supported;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	bool	fc2_exit_flag;
+#endif
 
 	int	request_voltage;
 	int	request_current;
@@ -228,6 +260,9 @@ struct usbpd_pm {
 	bool	adapter_omf;
 
 	struct delayed_work pm_work;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	struct delayed_work fc2_exit_work;
+#endif
 
 	struct notifier_block nb;
 
@@ -254,6 +289,10 @@ struct usbpd_pm {
 	int			therm_level_threshold;
 	bool		cp_sec_enable;
 	bool			use_qcom_gauge;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	bool			chg_enable_k11a;
+	bool			chg_enable_k81;
+#endif
 	/* jeita or thermal related */
 	bool			jeita_triggered;
 	bool			is_temp_out_fc2_range;
@@ -270,6 +309,9 @@ struct usbpd_pm {
 	bool			no_need_en_slave_bq;
 	int			slave_bq_disabled_check_count;
 	int			master_ibus_below_critical_low_count;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int			chip_ok_count;
+#endif
 
 	/*unsupport pps ta check count*/
 	int			unsupport_pps_ta_check_count;
@@ -298,6 +340,8 @@ extern int usbpd_get_pps_status(struct usbpd *pd, u32 *status);
 extern int usbpd_fetch_pdo(struct usbpd *pd, struct usbpd_pdo *pdos);
 extern int usbpd_select_pdo(struct usbpd *pd, int pdo, int uv, int ua);
 extern struct usbpd *smb_get_usbpd(void);
-
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+extern int usbpd_get_current_state(struct usbpd *pd);
+#endif
 
 #endif /* SRC_PDLIB_USB_PD_POLICY_MANAGER_H_ */

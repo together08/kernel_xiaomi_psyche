@@ -216,6 +216,12 @@ typedef struct {
 	int			usb_present;
 	int			ibat_now;
 	int			capacity;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int			bms_temp;
+	int			ibus_limits;
+	int			effective_ibus;
+	int			thermal_l;
+#endif
 
 	struct bq2597x			bq2597x;
 	struct sw_charger			sw_chager;
@@ -231,6 +237,9 @@ typedef struct {
 	bool			jeita_triggered;
 	bool			batt_cell_volt_triggered;
 	bool			is_temp_out_fc2_range;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	bool 			night_charging;
+#endif
 
     struct delayed_work	qc3_pm_work;
 	struct work_struct	disable_hvdcp3_work;

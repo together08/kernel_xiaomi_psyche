@@ -516,6 +516,9 @@ struct usbpd {
 	int                     last_pdo;
 	int                     last_uv;
 	int                     last_ua;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int			apdo_max;
+#endif
 	u64			monitor_entry_time;
 
 	/* non-qcom pps control */
@@ -539,6 +542,9 @@ struct usbpd {
 	u8			get_battery_status_db;
 	bool			send_get_battery_status;
 	u32			battery_sts_dobj;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	bool			request_reject;
+#endif
 };
 
 static LIST_HEAD(_usbpd);	/* useful for debugging */
@@ -1035,7 +1041,9 @@ static int pd_select_pdo_for_bq(struct usbpd *pd, int pdo_pos, int uv, int ua)
 			ua = MAX_NON_COMPLIANT_PPS_UA;
 			curr = ua / 1000;
 		}
+#ifndef CONFIG_MACH_XIAOMI_PSYCHE
 		usbpd_err(&pd->dev, " select uv (%d) and ua (%d) of APDO\n", uv, ua);
+#endif
 
 		pd->requested_voltage = uv;
 		pd->rdo = PD_RDO_AUGMENTED(pdo_pos, mismatch, 1, 1,
@@ -1044,7 +1052,11 @@ static int pd_select_pdo_for_bq(struct usbpd *pd, int pdo_pos, int uv, int ua)
 		usbpd_err(&pd->dev, "Only Fixed or Programmable PDOs supported\n");
 		return -ENOTSUPP;
 	}
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	usbpd_info(&pd->dev, "pdo_set:%d, uv:%d, ua:%d\n", pdo_pos, uv, ua);
+#else
 	usbpd_info(&pd->dev, "pdo:%d, uv:%d, ua:%d\n", pdo_pos, uv, ua);
+#endif
 
 	pd->requested_current = curr;
 	pd->requested_pdo = pdo_pos;
@@ -1107,6 +1119,10 @@ static int pd_eval_src_caps(struct usbpd *pd)
 #ifdef CONFIG_MACH_XIAOMI_SM8250
 	if (pd->batt_2s && pd->adapter_id == 0xA819)
 		pd_select_pdo(pd, 2, 0, 0);
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	else if (pd->request_reject == 1)
+		;
+#endif
 	else
 #endif
 	pd_select_pdo(pd, 1, 0, 0);
@@ -2799,6 +2815,10 @@ static void handle_state_soft_reset(struct usbpd *pd,
 	usbpd_set_state(pd, pd->current_pr == PR_SRC ?
 			PE_SRC_SEND_CAPABILITIES :
 			PE_SNK_WAIT_FOR_CAPABILITIES);
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	pd->request_reject = 1;
+	usbpd_err(&pd->dev, "set request_reject as 1\n");
+#endif
 }
 
 static void handle_state_src_transition_to_default(struct usbpd *pd,
@@ -4000,8 +4020,20 @@ static int usbpd_process_typec_mode(struct usbpd *pd,
 		/* if waiting for SinkTxOk to start an AMS */
 		if (pd->spec_rev == USBPD_REV_30 &&
 			typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH &&
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+			(pd->send_pr_swap || pd->send_dr_swap || pd->vdm_tx)) {
+
+			if (pd->vdm_tx) {
+				kfree(pd->vdm_tx);
+				pd->vdm_tx = NULL;
+			}
+#else
 			(pd->send_pr_swap || pd->send_dr_swap || pd->vdm_tx))
+#endif
 			break;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+		}
+#endif
 
 		if (pd->current_pr == PR_SINK)
 			return 0;
@@ -5367,6 +5399,11 @@ int usbpd_fetch_pdo(struct usbpd *pd, struct usbpd_pdo *pdos)
 
 	mutex_lock(&pd->swap_lock);
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	pd->request_reject = 0;
+	usbpd_err(&pd->dev, "set request_reject as 0\n");
+#endif
+
 	if (pd->current_pr == PR_SRC) {
 		usbpd_err(&pd->dev, "not support in SRC mode\n");
 		ret = -ENOTSUPP;
@@ -5477,6 +5514,16 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(usbpd_select_pdo);
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+int usbpd_get_current_state(struct usbpd *pd){
+	int ret = 0;
+
+	ret = pd->request_reject;
+	return ret;
+}
+EXPORT_SYMBOL(usbpd_get_current_state);
+#endif
 
 static void source_check_workfunc(struct work_struct *w)
 {
@@ -5629,11 +5676,18 @@ static void usbpd_pdo_workfunc(struct work_struct *w)
 	int passthrough_curr_max = 0;
 	union power_supply_propval val = {0};
 	int pps_max_watts = 0;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int pps_max_mwatt = 0;
+#endif
 
 	for (i = 0; i < ARRAY_SIZE(pd->received_pdos); i++) {
 		u32 pdo = pd->received_pdos[i];
 
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+		if (pd->received_pdos[1] == 0) {
+#else
 		if (pd->received_pdos[2] == 0) {
+#endif
 			pd->fix_pdo_5v = true;
 			usbpd_info(&pd->dev,"fixed pdo [2]= %d",pd->fix_pdo_5v);
 			}
@@ -5656,6 +5710,10 @@ static void usbpd_pdo_workfunc(struct work_struct *w)
 			}
 			if (pps_max_watts < max_volt * max_curr) {
 				pps_max_watts = max_volt * max_curr;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+				if (pps_max_watts >120000000 && pps_max_watts < 130000000)
+					pps_max_watts = 120000000;
+#endif
 				if (pps_max_watts < USBPD_WEAK_PPS_POWER) {
 					pd->pps_weak_limit = true;
 					usbpd_info(&pd->dev, "weak pps detect\n");
@@ -5668,6 +5726,19 @@ static void usbpd_pdo_workfunc(struct work_struct *w)
 				(PD_SRC_PDO_TYPE(pdo) == PD_SRC_PDO_TYPE_AUGMENTED) ? "PPS" : "PD2.0",
 				max_volt, min_volt, max_curr);
 	}
+
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	if (pd->verifed) {
+		pps_max_mwatt = pps_max_watts / 1000  / 1000;
+		if (pps_max_mwatt != pd->apdo_max) {
+			pd->apdo_max = pps_max_mwatt;
+			val.intval = pps_max_mwatt;
+			power_supply_set_property(pd->usb_psy,
+					POWER_SUPPLY_PROP_APDO_MAX, &val);
+			usbpd_err(&pd->dev, "pps_max_watts[%d]\n", pps_max_mwatt);
+		}
+	}
+#endif
 
 	if (pd->batt_2s) {
 		if (!pd->verify_done || !pd->is_support_2s)

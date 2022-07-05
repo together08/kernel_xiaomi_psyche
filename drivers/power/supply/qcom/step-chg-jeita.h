@@ -18,8 +18,12 @@
 struct step_chg_jeita_param {
 	u32			psy_prop;
 	char			*prop_name;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	int			hysteresis;
+#else
 	int			rise_hys;
 	int			fall_hys;
+#endif
 	bool			use_bms;
 };
 

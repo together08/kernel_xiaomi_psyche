@@ -243,6 +243,24 @@ static ssize_t power_supply_show_property(struct device *dev,
 		ret = scnprintf(buf, PAGE_SIZE, "%llx\n",
 				value.int64val);
 		break;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	case POWER_SUPPLY_PROP_PEN_MAC:
+		ret = scnprintf(buf, PAGE_SIZE, "%llx\n",
+				value.int64val);
+		break;
+	case POWER_SUPPLY_PROP_REVERSE_PEN_SOC:
+		ret = scnprintf(buf, PAGE_SIZE, "%d\n",
+				value.intval);
+		break;
+	case POWER_SUPPLY_PROP_REVERSE_CHG_STATE:
+		ret = scnprintf(buf, PAGE_SIZE, "%d\n",
+				value.intval);
+		break;
+	case POWER_SUPPLY_PROP_REVERSE_PEN_CHG_STATE:
+		ret = scnprintf(buf, PAGE_SIZE, "%d\n",
+				value.intval);
+		break;
+#endif
 	case POWER_SUPPLY_PROP_RX_CR:
 		ret = scnprintf(buf, PAGE_SIZE, "%llx\n",
 				value.int64val);
@@ -343,6 +361,20 @@ static ssize_t power_supply_store_property(struct device *dev,
 			return count;
 
 		break;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	case POWER_SUPPLY_PROP_PEN_MAC:
+		ret = kstrtoll(buf, 16, &num_long);
+		if (ret < 0)
+			return ret;
+		value.int64val = num_long;
+		ret = power_supply_set_property(psy, psp, &value);
+		if (ret < 0)
+			return ret;
+		else
+			return count;
+
+		break;
+#endif
 #endif
 	default:
 		ret = -EINVAL;
@@ -531,6 +563,9 @@ static struct device_attribute power_supply_attrs[] = {
 #ifdef CONFIG_MACH_XIAOMI_SM8250
 	POWER_SUPPLY_ATTR(apdo_max),
 #endif
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	POWER_SUPPLY_ATTR(power_max),
+#endif
 	POWER_SUPPLY_ATTR(pd_usb_suspend_supported),
 	POWER_SUPPLY_ATTR(charger_temp),
 	POWER_SUPPLY_ATTR(charger_temp_max),
@@ -573,10 +608,16 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(wireless_wakelock),
 	POWER_SUPPLY_ATTR(wireless_tx_id),
 	POWER_SUPPLY_ATTR(tx_adapter),
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	POWER_SUPPLY_ATTR(wls_car_adapter),
+#endif
 	POWER_SUPPLY_ATTR(tx_mac),
 	POWER_SUPPLY_ATTR(rx_cr),
 	POWER_SUPPLY_ATTR(rx_cep),
 	POWER_SUPPLY_ATTR(bt_state),
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	POWER_SUPPLY_ATTR(pen_mac),
+#endif
 #endif
 	POWER_SUPPLY_ATTR(min_icl),
 	POWER_SUPPLY_ATTR(moisture_detected),
@@ -660,9 +701,15 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(ti_alarm_status),
 	POWER_SUPPLY_ATTR(ti_fault_status),
 	POWER_SUPPLY_ATTR(ti_reg_status),
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	POWER_SUPPLY_ATTR(ti_reset_check),
+#endif
 	POWER_SUPPLY_ATTR(ti_set_bus_protection_for_qc3),
 	POWER_SUPPLY_ATTR(ti_bus_error_status),
 	POWER_SUPPLY_ATTR(fastcharge_mode),
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	POWER_SUPPLY_ATTR(ffc_iterm),
+#endif
 	POWER_SUPPLY_ATTR(dp_dm_bq),
 	POWER_SUPPLY_ATTR(pd_authentication),
 	POWER_SUPPLY_ATTR(passthrough_curr_max),
@@ -698,10 +745,20 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(div_2_mode),
 	POWER_SUPPLY_ATTR(reverse_chg_mode),
 	POWER_SUPPLY_ATTR(reverse_chg_state),
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	POWER_SUPPLY_ATTR(reverse_pen_chg_state),
+#endif
 	POWER_SUPPLY_ATTR(reverse_gpio_state),
 	POWER_SUPPLY_ATTR(reset_div_2_mode),
 	POWER_SUPPLY_ATTR(aicl_enable),
 	POWER_SUPPLY_ATTR(otg_state),
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	POWER_SUPPLY_ATTR(reverse_chg_hall3),
+	POWER_SUPPLY_ATTR(reverse_chg_hall4),
+	POWER_SUPPLY_ATTR(reverse_pen_soc),
+	POWER_SUPPLY_ATTR(reverse_vout),
+	POWER_SUPPLY_ATTR(reverse_iout),
+#endif
 #endif
 	POWER_SUPPLY_ATTR(fg_type),
 	POWER_SUPPLY_ATTR(charger_status),
