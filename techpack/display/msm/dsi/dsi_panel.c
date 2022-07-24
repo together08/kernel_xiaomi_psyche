@@ -17,6 +17,7 @@
 #include "dsi_display.h"
 #include "xiaomi_frame_stat.h"
 #include "sde_dbg.h"
+#include "dsi_mi_feature.h"
 
 /**
  * topology is currently defined by a set of following 3 values:
@@ -513,6 +514,10 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
 
+	if (panel->mi_cfg.panel_id == 0x4C334100420200) {
+		mdelay(2);
+	}
+
 	if (panel->mi_cfg.is_tddi_flag) {
 		if (!panel->mi_cfg.tddi_doubleclick_flag || panel->mi_cfg.panel_dead_flag) {
 			if (gpio_is_valid(panel->reset_config.reset_gpio))
@@ -592,6 +597,8 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 
 		if (type == DSI_CMD_SET_VID_TO_CMD_SWITCH)
 			cmds->msg.flags |= MIPI_DSI_MSG_ASYNC_OVERRIDE;
+		if (type == DSI_CMD_SET_MI_GIR_ON || type == DSI_CMD_SET_MI_GIR_OFF)
+			cmds->msg.flags |= MIPI_DSI_MSG_CMD_DMA_SCHED;
 
 		len = ops->transfer(panel->host, &cmds->msg);
 		if (len < 0) {
@@ -708,6 +715,21 @@ int dsi_panel_update_backlight(struct dsi_panel *panel,
 		rc = mipi_dsi_dcs_set_display_brightness_big_endian(dsi, bl_lvl);
 	} else {
 		rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_lvl);
+	}
+
+	if (mi_cfg->local_hbm_enabled) {
+		if (bl_lvl > 2047 && mi_cfg->dim_fp_dbv_max_in_hbm_flag == false) {
+			dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_DIM_FP_DBV_MAX_IN_HBM);
+			mi_cfg->dim_fp_dbv_max_in_hbm_flag = true;
+			DSI_INFO("set DSI_CMD_SET_MI_DIM_FP_DBV_MAX to hbm\n");
+		} else if (bl_lvl <= 2047 && mi_cfg->dim_fp_dbv_max_in_hbm_flag == true) {
+			dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_MI_DIM_FP_DBV_MAX_IN_NORMAL);
+			mi_cfg->dim_fp_dbv_max_in_hbm_flag = false;
+			DSI_INFO("set DSI_CMD_SET_MI_DIM_FP_DBV_MAX to normal\n");
+		}
+		if(panel->mi_cfg.local_hbm_cur_status) {
+			mi_dsi_panel_set_fod_brightness(dsi, bl_lvl);
+		}
 	}
 
 	if (rc < 0)
@@ -859,6 +881,11 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		return rc;
 	}
 
+	if (0 == bl_lvl && panel->host_config.cphy_strength){
+		dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_INSERT_BLACK);
+		usleep_range((6 * 1000),(6 * 1000) + 10);
+	}
+
 	switch (bl->type) {
 	case DSI_BACKLIGHT_WLED:
 		rc = backlight_device_set_brightness(bl->raw_bd, bl_lvl);
@@ -868,11 +895,14 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 			DSI_INFO("fod_backlight_flag set, skip set backlight %d\n", bl_lvl);
 		} else {
 			if (mi_cfg->hbm_51_ctrl_flag &&
-				(mi_cfg->fod_hbm_enabled || (mi_cfg->thermal_hbm_disabled && bl_lvl > 2047)
-				|| (mi_cfg->hbm_enabled && !mi_cfg->hbm_brightness))) {
+				(mi_cfg->fod_hbm_enabled || (mi_cfg->thermal_hbm_disabled && bl_lvl > 2047 &&
+				 mi_cfg->last_bl_level > 0) || (mi_cfg->hbm_enabled && !mi_cfg->hbm_brightness))) {
 				DSI_INFO("fod_hbm_enabled(%d),hbm_enabled(%d),"
 					"skip set backlight %d\n", mi_cfg->fod_hbm_enabled,
 					mi_cfg->hbm_enabled, bl_lvl);
+			} else if (mi_cfg->thermal_hbm_disabled && bl_lvl > 2047 && mi_cfg->last_bl_level == 0) {
+				bl_lvl = 2047;
+				rc = dsi_panel_update_backlight(panel, bl_lvl);
 			} else {
 				rc = dsi_panel_update_backlight(panel, bl_lvl);
 			}
@@ -896,6 +926,9 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		if (mi_cfg->dimming_state == STATE_DIM_RESTORE)
 			mi_cfg->dimming_state = STATE_NONE;
 	}
+
+	if (mi_cfg->last_bl_level == 0 && bl_lvl && panel->host_config.cphy_strength)
+		dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISABLE_INSERT_BLACK);
 
 	if (bl_lvl > 0 && mi_cfg->last_bl_level == 0 && mi_cfg->dc_type) {
 		DSI_INFO("crc off\n");
@@ -1350,7 +1383,7 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 					    struct dsi_parser_utils *utils,
 					    const char *name)
 {
-	u32 val = 0;
+	u32 val = 0, line_no = 0, window = 0;
 	int rc = 0;
 	bool panel_cphy_mode = false;
 
@@ -1395,6 +1428,26 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 					"qcom,panel-cphy-mode");
 	host->phy_type = panel_cphy_mode ? DSI_PHY_TYPE_CPHY
 						: DSI_PHY_TYPE_DPHY;
+
+	host->cphy_strength = utils->read_bool(utils->data,
+					"qcom,mdss-dsi-cphy-strength");
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-line",
+			&line_no);
+	if (rc)
+		host->dma_sched_line = 0;
+	else
+		host->dma_sched_line = line_no;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-window",
+				&window);
+	if (rc)
+		host->dma_sched_window = 0;
+	else
+		host->dma_sched_window = window;
+ 
+	DSI_DEBUG("[%s] DMA scheduling parameters Line: %d Window: %d\n", name,
+		host->dma_sched_line, host->dma_sched_window);
 
 	return 0;
 }
@@ -1656,7 +1709,6 @@ static int dsi_panel_parse_video_host_config(struct dsi_video_engine_cfg *cfg,
 	const char *traffic_mode;
 	u32 vc_id = 0;
 	u32 val = 0;
-	u32 line_no = 0;
 
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-h-sync-pulse", &val);
 	if (rc) {
@@ -1717,17 +1769,6 @@ static int dsi_panel_parse_video_host_config(struct dsi_video_engine_cfg *cfg,
 		cfg->vc_id = 0;
 	} else {
 		cfg->vc_id = vc_id;
-	}
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-dma-schedule-line",
-				  &line_no);
-	if (rc) {
-		DSI_DEBUG("[%s] set default dma scheduling line no\n", name);
-		cfg->dma_sched_line = 0x1;
-		/* do not fail since we have default value */
-		rc = 0;
-	} else {
-		cfg->dma_sched_line = line_no;
 	}
 
 error:
@@ -1902,6 +1943,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,cmd-to-video-mode-post-switch-commands",
 	"qcom,video-to-cmd-mode-switch-commands",
 	"qcom,video-to-cmd-mode-post-switch-commands",
+	"qcom,mdss-dsi-panel-status-offset-command",
 	"qcom,mdss-dsi-panel-status-command",
 	"qcom,mdss-dsi-lp1-command",
 	"qcom,mdss-dsi-lp2-command",
@@ -1937,6 +1979,21 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"mi,mdss-dsi-hbm-off-command",
 	"mi,mdss-dsi-hbm-fod-on-command",
 	"mi,mdss-dsi-hbm-fod-off-command",
+	"mi,mdss-dsi-fod-lhbm-white-1000nit-command",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-command",
+	"mi,mdss-dsi-fod-lhbm-green-500nit-command",
+	"mi,mdss-dsi-fod-lhbm-off-command",
+	"mi,mdss-dsi-fod-lhbm-green-500nit-read-pre-command",
+	"mi,mdss-dsi-fod-lhbm-green-500nit-read-command",
+	"mi,mdss-dsi-fod-lhbm-white-1000nit-giroff-read-pre-command",
+	"mi,mdss-dsi-fod-lhbm-white-1000nit-giron-read-pre-command",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-giroff-read-pre-command",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-giron-read-pre-command",
+	"mi,mdss-dsi-fod-lhbm-white-1000nit-read-offest-command",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-read-offest-command",
+	"mi,mdss-dsi-fod-lhbm-white-read-B2-command",
+	"mi,mdss-dsi-fod-lhbm-white-read-B5-command",
+	"mi,mdss-dsi-fod-lhbm-white-read-B8-command",
 	"mi,mdss-dsi-hbm-hdr-on-command",
 	"mi,mdss-dsi-hbm-hdr-off-command",
 	"mi,mdss-dsi-hbm-fod2norm-command",
@@ -1949,6 +2006,12 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"mi,mdss-dsi-elvss-dimming-off-command",
 	"mi,mdss-dsi-flat-on-command",
 	"mi,mdss-dsi-flat-off-command",
+	"mi,mdss-dsi-gir-on-command",
+	"mi,mdss-dsi-gir-off-command",
+	"mi,mdss-dsi-gir-read-reg-pre-command",
+	"mi,mdss-dsi-gir-off-read-reg-pre-command",
+	"mi,mdss-dsi-gir-read-reg-command",
+	"mi,mdss-dsi-timing-switch-gir-on-command",
 	"mi,mdss-dsi-level2-key-enable-command",
 	"mi,mdss-dsi-gamma-otp-read-c8-command",
 	"mi,mdss-dsi-gamma-otp-read-c9-command",
@@ -1966,6 +2029,8 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"mi,mdss-dsi-vi-setting-high-command",
 	"mi,mdss-dsi-switch-page4-command",
 	"mi,mdss-dsi-dc-read-command",
+	"mi,mdss-dsi-dc-read-d2-command",
+	"mi,mdss-dsi-dc-read-d4-command",
 	"mi,mdss-dsi-aod-to-dc-on-command",
 	"mi,mdss-dsi-dynamic-elvss-on-command",
 	"mi,mdss-dsi-dynamic-elvss-off-command",
@@ -1980,6 +2045,15 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"mi,mdss-dsi-greenish-gamma-set-command",
 	"mi,mdss-dsi-black-setting-command",
 	"mi,mdss-dsi-read-lockdown-info-command",
+	"qcom,mdss-dsi-dispparam-pen-120hz-command",
+	"qcom,mdss-dsi-dispparam-pen-60hz-command",
+	"qcom,mdss-dsi-dispparam-pen-30hz-command",
+	"mi,mdss-dsi-disable-insert-black-command",
+	"mi,mdss-dsi-insert-black-screen-command",
+	"mi,mdss-dsi-round-on-command",
+	"mi,mdss-dsi-round-off-command",
+	"mi,mdss-dsi-dim-fp-dbv-max-in-hbm-command",
+	"mi,mdss-dsi-dim-fp-dbv-max-in-normal-command",
 	/* xiaomi add end */
 	"qcom,mdss-dsi-dispparam-hbm-fod-on-command",
 	"qcom,mdss-dsi-dispparam-hbm-fod-off-command",
@@ -1999,6 +2073,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,cmd-to-video-mode-post-switch-commands-state",
 	"qcom,video-to-cmd-mode-switch-commands-state",
 	"qcom,video-to-cmd-mode-post-switch-commands-state",
+	"qcom,mdss-dsi-panel-status-offset-command-state",
 	"qcom,mdss-dsi-panel-status-command-state",
 	"qcom,mdss-dsi-lp1-command-state",
 	"qcom,mdss-dsi-lp2-command-state",
@@ -2034,6 +2109,21 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"mi,mdss-dsi-hbm-off-command-state",
 	"mi,mdss-dsi-hbm-fod-on-command-state",
 	"mi,mdss-dsi-hbm-fod-off-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-1000nit-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-command-state",
+	"mi,mdss-dsi-fod-lhbm-green-500nit-command-state",
+	"mi,mdss-dsi-fod-lhbm-off-command-state",
+	"mi,mdss-dsi-fod-lhbm-green-500nit-read-pre-command-state",
+	"mi,mdss-dsi-fod-lhbm-green-500nit-read-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-1000nit-giroff-read-pre-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-1000nit-giron-read-pre-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-giroff-read-pre-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-giron-read-pre-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-giron-read-pre-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-110nit-read-offest-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-read-B2-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-read-B5-command-state",
+	"mi,mdss-dsi-fod-lhbm-white-read-B8-command-state",
 	"mi,mdss-dsi-hbm-hdr-on-command-state",
 	"mi,mdss-dsi-hbm-hdr-off-command-state",
 	"mi,mdss-dsi-hbm-fod2norm-command-state",
@@ -2046,6 +2136,12 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"mi,mdss-dsi-elvss-dimming-off-command-state",
 	"mi,mdss-dsi-flat-on-command-state",
 	"mi,mdss-dsi-flat-off-command-state",
+	"mi,mdss-dsi-gir-on-command-state",
+	"mi,mdss-dsi-gir-off-command-state",
+	"mi,mdss-dsi-gir-read-reg-pre-command-state",
+	"mi,mdss-dsi-gir-off-read-reg-pre-command-state",
+	"mi,mdss-dsi-gir-read-reg-command-state",
+	"mi,mdss-dsi-timing-switch-gir-on-command-state",
 	"mi,mdss-dsi-level2-key-enable-command-state",
 	"mi,mdss-dsi-gamma-otp-read-c8-command-state",
 	"mi,mdss-dsi-gamma-otp-read-c9-command-state",
@@ -2063,6 +2159,8 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"mi,mdss-dsi-vi-setting-high-command-state",
 	"mi,mdss-dsi-switch-page4-command-state",
 	"mi,mdss-dsi-dc-read-command-state",
+	"mi,mdss-dsi-dc-read-d2-command-state",
+	"mi,mdss-dsi-dc-read-d4-command-state",
 	"mi,mdss-dsi-aod-to-dc-on-command-state",
 	"mi,mdss-dsi-dynamic-elvss-on-command-state",
 	"mi,mdss-dsi-dynamic-elvss-off-command-state",
@@ -2077,6 +2175,15 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"mi,mdss-dsi-greenish-gamma-set-command-state",
 	"mi,mdss-dsi-black-setting-command-state",
 	"mi,mdss-dsi-read-lockdown-info-command-state",
+	"qcom,mdss-dsi-dispparam-pen-120hz-command-state",
+	"qcom,mdss-dsi-dispparam-pen-60hz-command-state",
+	"qcom,mdss-dsi-dispparam-pen-30hz-command-state",
+	"mi,mdss-dsi-disable-insert-black-command-state",
+	"mi,mdss-dsi-insert-black-screen-command-state",
+	"mi,mdss-dsi-round-on-command-state",
+	"mi,mdss-dsi-round-off-command-state",
+	"mi,mdss-dsi-dim-fp-dbv-max-in-hbm-command-state",
+	"mi,mdss-dsi-dim-fp-dbv-max-in-normal-command-state",
 	/* xiaomi add end */
 	"qcom,mdss-dsi-dispparam-hbm-fod-on-command-state",
 	"qcom,mdss-dsi-dispparam-hbm-fod-off-command-state",
@@ -3466,6 +3573,12 @@ int dsi_panel_parse_esd_reg_read_configs(struct dsi_panel *panel)
 	if (!esd_config)
 		return -EINVAL;
 
+	dsi_panel_parse_cmd_sets_sub(&esd_config->offset_cmd,
+				DSI_CMD_SET_PANEL_STATUS_OFFSET, utils);
+	if (!esd_config->offset_cmd.count) {
+		pr_err("no panel status offset command\n");
+	}
+
 	dsi_panel_parse_cmd_sets_sub(&esd_config->status_cmd,
 				DSI_CMD_SET_PANEL_STATUS, utils);
 	if (!esd_config->status_cmd.count) {
@@ -3578,6 +3691,12 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 
 	esd_config = &panel->esd_config;
 	esd_config->status_mode = ESD_MODE_MAX;
+
+	/* esd check using gpio irq method has high priority */
+	rc = dsi_panel_parse_esd_gpio_config(panel);
+	if (rc)
+		DSI_DEBUG("Failed to get mi,esd-err-irq-gpio config\n");
+
 	esd_config->esd_enabled = utils->read_bool(utils->data,
 		"qcom,esd-check-enabled");
 
@@ -4768,9 +4887,18 @@ int dsi_panel_switch(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
+	if (panel->mi_cfg.panel_id == 0x4C334100420200 && panel->mi_cfg.in_aod) {
+		DSI_INFO("In AOD, skip set fps \n");
+		return rc;
+	}
+
 	mutex_lock(&panel->panel_lock);
 
-	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH);
+	if (panel->mi_cfg.gir_enabled) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH_GIR_ON);
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH);
+	}
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",
 		       panel->name, rc);
@@ -4893,6 +5021,7 @@ int dsi_panel_enable(struct dsi_panel *panel)
 	mi_cfg->dimming_state = STATE_NONE;
 	mi_cfg->doze_brightness_state = DOZE_TO_NORMAL;
 	mi_cfg->into_aod_pending = false;
+	mi_cfg->cabc_current_status = 0;
 	fm_stat.idle_status = false;
 
 	mutex_unlock(&panel->panel_lock);
@@ -4919,6 +5048,14 @@ int dsi_panel_post_enable(struct dsi_panel *panel)
 		goto error;
 	}
 error:
+	if (panel->host_config.phy_type == DSI_PHY_TYPE_CPHY) {
+		rc = dsi_panel_match_fps_pen_setting(panel, panel->cur_mode);
+		if (rc) {
+			DSI_ERR("[%s] failed to update TP fps code setting, rc=%d\n",
+				panel->name, rc);
+		}
+	}
+
 	mutex_unlock(&panel->panel_lock);
 
 	if (panel->mi_cfg.gamma_update_flag) {
@@ -5102,6 +5239,9 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	mi_cfg->into_aod_pending = false;
 	mi_cfg->layer_fod_unlock_success = false;
 	mi_cfg->sysfs_fod_unlock_success = false;
+	mi_cfg->gir_enabled = false;
+	mi_cfg->request_gir_status = false;
+	mi_cfg->local_hbm_cur_status = false;
 	if (mi_cfg->dc_type)
 		mi_cfg->dc_enable = false;
 

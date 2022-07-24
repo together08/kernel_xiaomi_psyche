@@ -22,6 +22,7 @@
 #include "dsi_display.h"
 #include "dsi_panel_mi.h"
 #include "clone_cooling_device.h"
+#include "mi_disp_lhbm.h"
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -830,15 +831,76 @@ void sde_crtc_fod_ui_ready(struct dsi_display *display, int type, int value)
 
 	if (type == 2) /* ICON */
 	{
-		if (value == 0)
-			display->panel->mi_cfg.fod_ui_ready &= ~0x02;
-		else if (value == 1)
-			display->panel->mi_cfg.fod_ui_ready |= 0x02;
+		if (display->panel->mi_cfg.local_hbm_enabled) {
+			if (value == 0)
+				display->panel->mi_cfg.fod_ui_ready &= ~0x07;
+			else if (value == 1) {
+				if (display->panel->mi_cfg.lhbm_target == LOCAL_LHBM_TARGET_BRIGHTNESS_WHITE_110NIT)
+					display->panel->mi_cfg.fod_ui_ready |= 0x07;
+				else if (display->panel->mi_cfg.lhbm_target == LOCAL_LHBM_TARGET_BRIGHTNESS_WHITE_1000NIT
+					|| display->panel->mi_cfg.lhbm_target == LOCAL_LHBM_TARGET_BRIGHTNESS_GREEN_500NIT)
+					display->panel->mi_cfg.fod_ui_ready |= 0x03;
+			}
+
+		} else {
+			if (value == 0)
+				display->panel->mi_cfg.fod_ui_ready &= ~0x02;
+			else if (value == 1)
+				display->panel->mi_cfg.fod_ui_ready |= 0x02;
+		}
 
 	}
 
 	SDE_INFO("fod_ui_ready notify=%d", display->panel->mi_cfg.fod_ui_ready);
 	sysfs_notify(&display->drm_conn->kdev->kobj, NULL, "fod_ui_ready");
+}
+
+int mi_sde_connector_gir_fence(struct drm_connector *connector)
+{
+	int rc = 0;
+	struct sde_connector *c_conn;
+	struct dsi_display *dsi_display;
+	struct dsi_panel_mi_cfg *mi_cfg;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector ptr\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	if (c_conn->connector_type != DRM_MODE_CONNECTOR_DSI)
+		return 0;
+
+	dsi_display = (struct dsi_display *) c_conn->display;
+	if (!dsi_display || !dsi_display->panel) {
+		SDE_ERROR("invalid display/panel ptr\n");
+		return -EINVAL;
+	}
+
+	if (strncmp(dsi_display->display_type, "primary", 7))
+		return -EINVAL;
+
+	mi_cfg = &dsi_display->panel->mi_cfg;
+	mutex_lock(&dsi_display->panel->panel_lock);
+	if (mi_cfg->request_gir_status == true && mi_cfg->gir_enabled == false) {
+		SDE_ATRACE_BEGIN("DISP_FEATURE_GIR_ON");
+		SDE_INFO("mi-dsi-panel: gir on\n");
+		dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_SET_MI_GIR_ON);
+		sde_encoder_wait_for_event(c_conn->encoder,MSM_ENC_VBLANK);
+		SDE_ATRACE_END("DISP_FEATURE_GIR_ON");
+		mi_cfg->gir_enabled = true;
+	} else if (mi_cfg->request_gir_status == false && mi_cfg->gir_enabled == true) {
+		SDE_ATRACE_BEGIN("DISP_FEATURE_GIR_OFF");
+		SDE_INFO("mi-dsi-panel: gir off\n");
+		dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_SET_MI_GIR_OFF);
+		sde_encoder_wait_for_event(c_conn->encoder,MSM_ENC_VBLANK);
+		SDE_ATRACE_END("DISP_FEATURE_GIR_OFF");
+		mi_cfg->gir_enabled = false;
+	}
+	mutex_unlock(&dsi_display->panel->panel_lock);
+
+	return rc;
 }
 
 static int _sde_connector_mi_dimlayer_hbm_fence(struct drm_connector *connector)
@@ -857,6 +919,9 @@ static int _sde_connector_mi_dimlayer_hbm_fence(struct drm_connector *connector)
 	bool icon;
 	static bool last_icon = false;
 #endif
+	bool anim;
+	static bool last_anim = false;
+
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
 		return -EINVAL;
@@ -997,6 +1062,17 @@ static int _sde_connector_mi_dimlayer_hbm_fence(struct drm_connector *connector)
 	}
 	last_icon = icon;
 #endif
+
+	anim = c_conn->mi_dimlayer_state.mi_dimlayer_type & MI_LAYER_FOD_ANIM;
+	if (last_anim != anim) {
+		if (anim) {
+			mi_cfg->fod_anim_layer_enabled = true;
+		} else {
+			mi_cfg->fod_anim_layer_enabled = false;
+		}
+	}
+	last_anim = anim;
+
 	return rc;
 }
 
@@ -1102,6 +1178,8 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	params.hdr_meta = &c_state->hdr_meta;
 
 	SDE_EVT32_VERBOSE(connector->base.id);
+
+	mi_sde_connector_gir_fence(connector);
 
 	/* fingerprint hbm fence */
 	_sde_connector_mi_dimlayer_hbm_fence(connector);
@@ -1211,6 +1289,10 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 		sde_encoder_wait_for_event(c_conn->encoder,
 				MSM_ENC_TX_COMPLETE);
 	c_conn->allow_bl_update = true;
+
+	if (display->panel->mi_cfg.pending_lhbm_state) {
+		mi_disp_set_fod_queue_work(1, false);
+	}
 
 	if (c_conn->bl_device) {
 		c_conn->bl_device->props.power = FB_BLANK_UNBLANK;
@@ -2688,6 +2770,94 @@ static void sde_connector_check_status_work(struct work_struct *work)
 	_sde_connector_report_panel_dead(conn, false);
 }
 
+static irqreturn_t esd_err_irq_handle(int irq, void *data)
+{
+	struct sde_connector *c_conn = data;
+	struct dsi_display *display = c_conn->display;
+	struct drm_event event;
+	int power_mode;
+	const char *sde_power_mode_str[] = {
+		[SDE_MODE_DPMS_ON] = "SDE_MODE_DPMS_ON",
+		[SDE_MODE_DPMS_LP1] = "SDE_MODE_DPMS_LP1",
+		[SDE_MODE_DPMS_LP2] = "SDE_MODE_DPMS_LP2",
+		[SDE_MODE_DPMS_STANDBY] = "SDE_MODE_DPMS_STANDBY",
+		[SDE_MODE_DPMS_SUSPEND] = "SDE_MODE_DPMS_SUSPEND",
+		[SDE_MODE_DPMS_OFF] = "SDE_MODE_DPMS_OFF",
+	};
+
+	if (!display || !display->panel) {
+		SDE_ERROR("invalid display/panel\n");
+		return IRQ_HANDLED;
+	}
+
+	if (gpio_get_value(display->panel->mi_cfg.esd_err_irq_gpio) &&
+		display->panel->host_config.cphy_strength) {
+		SDE_ERROR("trigger esd by mistake,return\n");
+		return IRQ_HANDLED;
+	}
+
+	DSI_INFO("panel esd irq trigging \n");
+
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		if (dsi_panel_initialized(display->panel)) {
+			if (atomic_read(&(display->panel->esd_recovery_pending))) {
+				SDE_ERROR("ESD recovery already pending\n");
+				return IRQ_HANDLED;
+			}
+			power_mode = display->panel->power_mode;
+			DSI_INFO("power_mode = %s\n", sde_power_mode_str[power_mode]);
+			if (power_mode == SDE_MODE_DPMS_ON ||
+				power_mode == SDE_MODE_DPMS_LP1) {
+				atomic_set(&display->panel->esd_recovery_pending, 1);
+				_sde_connector_report_panel_dead(c_conn, false);
+			} else {
+				if (!c_conn->panel_dead) {
+					atomic_set(&display->panel->esd_recovery_pending, 1);
+					c_conn->panel_dead = true;
+					event.type = DRM_EVENT_PANEL_DEAD;
+					event.length = sizeof(bool);
+					msm_mode_object_event_notify(&c_conn->base.base,
+						c_conn->base.dev, &event, (u8 *)&c_conn->panel_dead);
+					SDE_EVT32(SDE_EVTLOG_ERROR);
+					SDE_ERROR("esd irq check failed report PANEL_DEAD"
+						" conn_id: %d enc_id: %d\n",
+						c_conn->base.base.id, c_conn->encoder->base.id);
+				}
+			}
+		}
+	}
+
+	return IRQ_HANDLED;
+}
+
+static int sde_connector_register_esd_irq(struct sde_connector *c_conn)
+{
+	struct dsi_display *display = c_conn->display;
+	int rc = 0;
+
+	/* register esd irq and enable it after panel enabled */
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		if (!display || !display->panel) {
+			SDE_ERROR("invalid display/panel\n");
+			return -EINVAL;
+		}
+		if (display->panel->mi_cfg.esd_err_irq_gpio > 0) {
+			rc = request_threaded_irq(display->panel->mi_cfg.esd_err_irq,
+				NULL, esd_err_irq_handle,
+				display->panel->mi_cfg.esd_err_irq_flags,
+				"esd_err_irq", c_conn);
+			if (rc) {
+				SDE_ERROR("register esd irq failed\n");
+			} else {
+				SDE_INFO("register esd irq success\n");
+				disable_irq(display->panel->mi_cfg.esd_err_irq);
+			}
+		}
+	}
+
+	return rc;
+}
+
 static const struct drm_connector_helper_funcs sde_connector_helper_ops = {
 	.get_modes =    sde_connector_get_modes,
 	.mode_valid =   sde_connector_mode_valid,
@@ -3140,6 +3310,9 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 
 	INIT_DELAYED_WORK(&c_conn->status_work,
 			sde_connector_check_status_work);
+
+	sde_connector_register_esd_irq(c_conn);
+
 
 	return &c_conn->base;
 

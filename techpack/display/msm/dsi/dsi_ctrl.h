@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _DSI_CTRL_H_
@@ -239,6 +239,18 @@ struct dsi_ctrl_interrupts {
  *                           insert null packet.
  * @modeupdated:	  Boolean to send new roi if mode is updated.
  * @split_link_supported: Boolean to check if hw supports split link.
+ * @cmd_mode:		Boolean to indicate if panel is running in
+ *			command mode.
+ * @enable_cmd_dma_stats: Boolean to indicate the verbose logging during
+ *				CMD transfer.
+ * @cmd_trigger_line:	unsigned integer that indicates the line at
+ *			which command gets triggered.
+ * @cmd_trigger_frame:	unsigned integer that indicates the frame at
+ *			which command gets triggered.
+ * @cmd_success_line:	unsigned integer that indicates the line at
+ *			which command transfer is successful.
+ * @cmd_success_frame:	unsigned integer that indicates the frame at
+ *			which command transfer is successful.
  */
 struct dsi_ctrl {
 	struct platform_device *pdev;
@@ -299,6 +311,12 @@ struct dsi_ctrl {
 	bool null_insertion_enabled;
 	bool modeupdated;
 	bool split_link_supported;
+	bool cmd_mode;
+	bool enable_cmd_dma_stats;
+	u32 cmd_trigger_line;
+	u32 cmd_trigger_frame;
+	u32 cmd_success_line;
+	u32 cmd_success_frame;
 };
 
 /**
