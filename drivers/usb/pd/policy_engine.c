@@ -3849,6 +3849,9 @@ static void handle_disconnect(struct usbpd *pd)
 	pd->forced_pr = POWER_SUPPLY_TYPEC_PR_NONE;
 
 	pd->current_state = PE_UNKNOWN;
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+	pd_reset_protocol(pd);
+#endif
 
 	kobject_uevent(&pd->dev.kobj, KOBJ_CHANGE);
 	typec_unregister_partner(pd->partner);
@@ -3912,8 +3915,10 @@ static void usbpd_sm(struct work_struct *w)
 	struct rx_msg *rx_msg = NULL;
 	unsigned long flags;
 
+#ifndef CONFIG_MACH_XIAOMI_PSYCHE
 	usbpd_dbg(&pd->dev, "handle state %s\n",
 			usbpd_state_strings[pd->current_state]);
+#endif
 
 	hrtimer_cancel(&pd->timer);
 	pd->sm_queued = false;

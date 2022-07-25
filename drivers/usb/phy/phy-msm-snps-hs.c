@@ -668,6 +668,10 @@ static int msm_hsphy_dpdm_regulator_disable(struct regulator_dev *rdev)
 	mutex_lock(&phy->phy_lock);
 	if (phy->dpdm_enable) {
 		if (!phy->cable_connected) {
+#ifdef CONFIG_MACH_XIAOMI_PSYCHE
+			msm_hsphy_reset(phy);
+			msm_hsphy_enable_clocks(phy, false);
+#endif
 			ret = msm_hsphy_enable_power(phy, false);
 			if (ret < 0) {
 				mutex_unlock(&phy->phy_lock);
