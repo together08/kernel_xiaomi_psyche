@@ -16,7 +16,11 @@
 #include "segment.h"
 #include "gc.h"
 
+#ifdef CONFIG_DEBUG_FS
 static struct proc_dir_entry *f2fs_proc_root;
+#else
+struct proc_dir_entry *f2fs_proc_root;
+#endif
 
 /* Sysfs support for f2fs */
 enum {
